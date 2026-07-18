@@ -11,6 +11,23 @@
       <button type="button" data-position="middle" aria-pressed="true">Middle <kbd>2</kbd></button>
       <button type="button" data-position="right" aria-pressed="false">Right <kbd>3</kbd></button>
     </div>
+    <label class="serve-control">Serve type
+      <select id="serve-type">
+        <option value="random" selected>Random</option>
+        <option value="standingFloat">Standing Float</option>
+        <option value="jumpFloat">Jump Float</option>
+        <option value="jumpTopspin">Jump Topspin</option>
+        <option value="shortFloat">Short Float</option>
+        <option value="deepTopspin">Deep Topspin</option>
+      </select>
+    </label>
+    <label class="serve-control">Reveal serve
+      <select id="reveal-serve">
+        <option value="show" selected>Show</option>
+        <option value="hide">Hide</option>
+      </select>
+    </label>
+    <div id="active-serve">Serve: Random</div>
   </section>
   <div id="controls">WASD move · M mine · L leave · 1/2/3 position · R restart after result</div>
   <div id="feedback">Loading trainer…</div>
