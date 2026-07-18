@@ -126,7 +126,8 @@ export class Game {
     this.decisionDone = true;
     const decision = decideOwnership({
       landing: this.scenario.landing,
-      receivers: this.receiverSnapshots()
+      receivers: this.receiverSnapshots(),
+      controlledSlot: this.controlledSlot
     });
     const result = scoreRound({
       call,
