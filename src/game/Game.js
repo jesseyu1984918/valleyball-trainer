@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { FORMATION, ROUND_TIMING } from '../config.js';
+import { FORMATION, POSITION_SHORTCUTS, RECEIVER_POSITIONS, ROUND_TIMING } from '../config.js';
 import { createCourt } from './Court.js';
 import { Player } from './Player.js';
 import { Teammate } from './Teammate.js';
@@ -9,10 +9,194 @@ import { decideOwnership } from './DecisionEngine.js';
 import { scoreRound } from './Scoring.js';
 import { Keyboard } from '../input/Keyboard.js';
 import { Hud } from '../ui/Hud.js';
-export class Game{constructor(canvas){this.renderer=new THREE.WebGLRenderer({canvas,antialias:true});this.renderer.setPixelRatio(Math.min(devicePixelRatio,2));this.renderer.shadowMap.enabled=true;this.scene=new THREE.Scene();this.camera=new THREE.PerspectiveCamera(55,1,.1,100);createCourt(this.scene);this.player=new Player(this.scene,FORMATION.middle);this.left=new Teammate(this.scene,{...FORMATION.left,color:0xff8a65});this.right=new Teammate(this.scene,{...FORMATION.right,color:0xff8a65});this.ball=new Ball(this.scene);this.keyboard=new Keyboard();this.hud=new Hud();this.score=0;this.streak=0;this.phase='countdown';this.phaseStart=performance.now();this.roundStart=0;this.scenario=null;this.decisionDone=false;this.last=performance.now();addEventListener('resize',()=>this.resize());this.resize();}
- start(){requestAnimationFrame(t=>this.loop(t));}
- resetRound(now){this.player.reset(FORMATION.middle);this.left.reset(FORMATION.left);this.right.reset(FORMATION.right);this.scenario=createServeScenario({difficulty:'normal'});this.ball.start(this.scenario);this.ball.mesh.visible=false;this.phase='countdown';this.phaseStart=now;this.decisionDone=false;this.hud.update({state:'Countdown',reaction:'—',feedback:'Read the server and be ready to move.'});}
- beginServe(now){this.phase='serve';this.roundStart=now;this.ball.mesh.visible=true;this.hud.update({state:'Serve',feedback:'Move with WASD. Call MINE or LEAVE before the ball arrives.'});}
- evaluate(call,now){if(this.decisionDone||this.phase!=='serve')return;this.decisionDone=true;const receivers=[this.left.snapshot(),this.player.snapshot(),this.right.snapshot()];const decision=decideOwnership({landing:this.scenario.landing,receivers});const result=scoreRound({call,decision,player:this.player.snapshot(),landing:this.scenario.landing,reactionMs:now-this.roundStart});this.score+=result.total;this.streak=result.correct?this.streak+1:0;this.phase='feedback';this.phaseStart=now;this.hud.update({score:this.score,streak:this.streak,reaction:`${Math.round(now-this.roundStart)} ms`,state:'Feedback',feedback:`${result.correct?'Correct':'Incorrect'} — ${decision.explanation} +${result.total}`});}
- loop(now){const dt=Math.min(.05,(now-this.last)/1000);this.last=now;const action=this.keyboard.consume();if(!this.scenario)this.resetRound(now);if(this.phase==='countdown'&&now-this.phaseStart>=ROUND_TIMING.countdownMs)this.beginServe(now);if(this.phase==='serve'){this.player.update(this.keyboard.movement(),dt);const progress=(now-this.roundStart)/this.scenario.durationMs;this.ball.update(progress);if(action==='m'||action==='l')this.evaluate(action==='m'?'mine':'leave',now);if(progress>=ROUND_TIMING.decisionPlaneProgress&&!this.decisionDone)this.evaluate(null,now);}else if(this.phase==='feedback'){if(action==='r'||now-this.phaseStart>=ROUND_TIMING.feedbackMs)this.resetRound(now);}this.left.updateToward(FORMATION.left,dt);this.right.updateToward(FORMATION.right,dt);const desired=new THREE.Vector3(this.player.x,4.8,this.player.z+7.2);this.camera.position.lerp(desired,.08);this.camera.lookAt(this.player.x,1.2,0);this.renderer.render(this.scene,this.camera);requestAnimationFrame(t=>this.loop(t));}
- resize(){const w=innerWidth,h=innerHeight;this.renderer.setSize(w,h,false);this.camera.aspect=w/h;this.camera.updateProjectionMatrix();}}
+import {
+  canSelectPosition,
+  isValidSlot,
+  orderedReceiverSnapshots,
+  teammateSlots
+} from './ReceiverPositions.js';
+
+export class Game {
+  constructor(canvas) {
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    this.renderer.shadowMap.enabled = true;
+    this.scene = new THREE.Scene();
+    this.camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
+    createCourt(this.scene);
+
+    this.controlledSlot = 'middle';
+    this.player = new Player(this.scene, FORMATION[this.controlledSlot]);
+    this.teammates = [];
+    this.rebuildFormation();
+
+    this.ball = new Ball(this.scene);
+    this.keyboard = new Keyboard();
+    this.hud = new Hud();
+    this.hud.setPosition(this.controlledSlot);
+    this.hud.onPositionSelect((slot) => this.setControlledSlot(slot));
+
+    this.score = 0;
+    this.streak = 0;
+    this.phase = 'countdown';
+    this.phaseStart = performance.now();
+    this.roundStart = 0;
+    this.scenario = null;
+    this.decisionDone = false;
+    this.hasServeStarted = false;
+    this.last = performance.now();
+
+    addEventListener('resize', () => this.resize());
+    this.resize();
+  }
+
+  start() {
+    requestAnimationFrame((time) => this.loop(time));
+  }
+
+  rebuildFormation() {
+    this.player.reset(FORMATION[this.controlledSlot]);
+
+    for (const teammate of this.teammates) {
+      teammate.dispose();
+    }
+
+    this.teammates = teammateSlots(this.controlledSlot).map(
+      (slot) => new Teammate(this.scene, { ...FORMATION[slot], color: 0xff8a65 })
+    );
+  }
+
+  setControlledSlot(slot) {
+    if (!isValidSlot(slot) || slot === this.controlledSlot) return false;
+    if (!canSelectPosition(this.phase, this.hasServeStarted)) return false;
+
+    this.controlledSlot = slot;
+    this.rebuildFormation();
+    this.hud.setPosition(slot);
+
+    if (this.phase === 'feedback') {
+      const label = RECEIVER_POSITIONS[slot].label;
+      this.hud.update({ feedback: `Position changed — next round: ${label}.` });
+    }
+
+    return true;
+  }
+
+  receiverSnapshots() {
+    return orderedReceiverSnapshots(
+      this.controlledSlot,
+      this.player.snapshot(),
+      this.teammates.map((teammate) => teammate.snapshot())
+    );
+  }
+
+  resetRound(now) {
+    this.player.reset(FORMATION[this.controlledSlot]);
+    for (const teammate of this.teammates) {
+      teammate.reset(FORMATION[teammate.id]);
+    }
+
+    this.scenario = createServeScenario({ difficulty: 'normal' });
+    this.ball.start(this.scenario);
+    this.ball.mesh.visible = false;
+    this.phase = 'countdown';
+    this.phaseStart = now;
+    this.decisionDone = false;
+    this.hud.update({
+      state: 'Countdown',
+      reaction: '—',
+      feedback: 'Read the server and be ready to move.'
+    });
+  }
+
+  beginServe(now) {
+    this.phase = 'serve';
+    this.hasServeStarted = true;
+    this.roundStart = now;
+    this.ball.mesh.visible = true;
+    this.hud.update({
+      state: 'Serve',
+      feedback: 'Move with WASD. Call MINE or LEAVE before the ball arrives.'
+    });
+  }
+
+  evaluate(call, now) {
+    if (this.decisionDone || this.phase !== 'serve') return;
+
+    this.decisionDone = true;
+    const decision = decideOwnership({
+      landing: this.scenario.landing,
+      receivers: this.receiverSnapshots()
+    });
+    const result = scoreRound({
+      call,
+      decision,
+      player: this.player.snapshot(),
+      landing: this.scenario.landing,
+      reactionMs: now - this.roundStart
+    });
+
+    this.score += result.total;
+    this.streak = result.correct ? this.streak + 1 : 0;
+    this.phase = 'feedback';
+    this.phaseStart = now;
+    this.hud.update({
+      score: this.score,
+      streak: this.streak,
+      reaction: `${Math.round(now - this.roundStart)} ms`,
+      state: 'Feedback',
+      feedback: `${result.correct ? 'Correct' : 'Incorrect'} — ${decision.explanation} +${result.total}`
+    });
+  }
+
+  loop(now) {
+    const dt = Math.min(0.05, (now - this.last) / 1000);
+    this.last = now;
+    const action = this.keyboard.consume();
+
+    if (!this.scenario) this.resetRound(now);
+
+    if (POSITION_SHORTCUTS[action]) {
+      this.setControlledSlot(POSITION_SHORTCUTS[action]);
+    }
+
+    if (this.phase === 'countdown' && now - this.phaseStart >= ROUND_TIMING.countdownMs) {
+      this.beginServe(now);
+    }
+
+    if (this.phase === 'serve') {
+      this.player.update(this.keyboard.movement(), dt);
+      const progress = (now - this.roundStart) / this.scenario.durationMs;
+      this.ball.update(progress);
+
+      if (action === 'm' || action === 'l') {
+        this.evaluate(action === 'm' ? 'mine' : 'leave', now);
+      }
+      if (progress >= ROUND_TIMING.decisionPlaneProgress && !this.decisionDone) {
+        this.evaluate(null, now);
+      }
+    } else if (this.phase === 'feedback') {
+      if (action === 'r' || now - this.phaseStart >= ROUND_TIMING.feedbackMs) {
+        this.resetRound(now);
+      }
+    }
+
+    for (const teammate of this.teammates) {
+      teammate.updateToward(FORMATION[teammate.id], dt);
+    }
+
+    const desired = new THREE.Vector3(this.player.x, 4.8, this.player.z + 7.2);
+    this.camera.position.lerp(desired, 0.08);
+    this.camera.lookAt(this.player.x, 1.2, 0);
+    this.renderer.render(this.scene, this.camera);
+    requestAnimationFrame((time) => this.loop(time));
+  }
+
+  resize() {
+    const width = innerWidth;
+    const height = innerHeight;
+    this.renderer.setSize(width, height, false);
+    this.camera.aspect = width / height;
+    this.camera.updateProjectionMatrix();
+  }
+}
