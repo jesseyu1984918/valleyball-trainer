@@ -11,7 +11,8 @@ export class Hud {
       controlledPosition: doc.querySelector('#controlled-position'),
       serveType: doc.querySelector('#serve-type'),
       revealServe: doc.querySelector('#reveal-serve'),
-      activeServe: doc.querySelector('#active-serve')
+      activeServe: doc.querySelector('#active-serve'),
+      endSession: doc.querySelector('#end-session')
     };
     this.positionButtons = [...doc.querySelectorAll('[data-position]')];
   }
@@ -28,6 +29,10 @@ export class Hud {
     for (const button of this.positionButtons) {
       button.addEventListener('click', () => callback(button.dataset.position));
     }
+  }
+
+  onEndSession(callback) {
+    this.e.endSession?.addEventListener('click', callback);
   }
 
   setPosition(slot) {
