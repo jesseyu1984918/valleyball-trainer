@@ -1,0 +1,1 @@
+import {describe,it,expect} from 'vitest';import {createServeScenario,validateScenario} from '../src/game/ServeGenerator.js';describe('serve',()=>{it('creates valid scenarios',()=>{const s=createServeScenario({rng:()=>.5});expect(validateScenario(s)).toBe(true);});});

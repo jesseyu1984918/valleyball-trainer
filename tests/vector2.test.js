@@ -1,0 +1,1 @@
+import {describe,it,expect} from 'vitest';import {clamp,distance,dot,normalize,subtract} from '../src/math/vector2.js';describe('vector2',()=>{it('works',()=>{expect(clamp(12,0,10)).toBe(10);expect(distance({x:0,z:0},{x:3,z:4})).toBe(5);expect(normalize(subtract({x:3,z:4},{x:0,z:0}))).toEqual({x:.6,z:.8});expect(dot({x:1,z:2},{x:3,z:4})).toBe(11);});});

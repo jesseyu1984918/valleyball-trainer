@@ -1,0 +1,1 @@
+import {describe,it,expect} from 'vitest';import {RoundState,ROUND_STATES} from '../src/game/RoundState.js';describe('round state',()=>{it('rejects duplicate calls',()=>{const r=new RoundState();r.transition(ROUND_STATES.COUNTDOWN);r.transition(ROUND_STATES.SERVE);expect(r.submitDecision('mine')).toBe(true);expect(r.submitDecision('leave')).toBe(false);});});

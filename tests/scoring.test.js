@@ -1,0 +1,1 @@
+import {describe,it,expect} from 'vitest';import {scoreRound} from '../src/game/Scoring.js';describe('scoring',()=>{it('caps at 100',()=>{const r=scoreRound({call:'mine',decision:{expectedCall:'mine'},player:{x:0,z:7.65},landing:{x:0,z:7},reactionMs:0});expect(r.total).toBeLessThanOrEqual(100);expect(r.total).toBe(100);});});
