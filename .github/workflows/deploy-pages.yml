@@ -1,8 +1,6 @@
-name: Deploy to GitHub Pages
+name: Deploy preview to GitHub Pages
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -32,7 +30,9 @@ jobs:
       - name: Run tests
         run: npm test
 
-      - name: Build site
+      - name: Build preview
+        env:
+          VITE_BASE_PATH: /valleyball-trainer/
         run: npm run build
 
       - name: Configure Pages
