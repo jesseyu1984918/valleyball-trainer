@@ -5,8 +5,14 @@
     <div>Streak <strong id="streak">0</strong></div>
     <div>Reaction <strong id="reaction">—</strong></div>
     <div>State <strong id="round-state">Loading</strong></div>
+    <div id="controlled-position">Controlled: Middle Back</div>
+    <div id="position-selector" aria-label="Controlled receiver position">
+      <button type="button" data-position="left" aria-pressed="false">Left <kbd>1</kbd></button>
+      <button type="button" data-position="middle" aria-pressed="true">Middle <kbd>2</kbd></button>
+      <button type="button" data-position="right" aria-pressed="false">Right <kbd>3</kbd></button>
+    </div>
   </section>
-  <div id="controls">WASD move · M mine · L leave · R restart after result</div>
+  <div id="controls">WASD move · M mine · L leave · 1/2/3 position · R restart after result</div>
   <div id="feedback">Loading trainer…</div>
   <div id="startup-error" hidden></div>
 </div>
