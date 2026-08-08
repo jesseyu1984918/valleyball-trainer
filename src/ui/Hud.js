@@ -1,4 +1,4 @@
-import { RECEIVER_POSITIONS, SERVE_TYPES } from '../config.js';
+import { DIFFICULTIES, RECEIVER_POSITIONS, SERVE_TYPES } from '../config.js';
 
 export class Hud {
   constructor(doc = document) {
@@ -11,10 +11,13 @@ export class Hud {
       controlledPosition: doc.querySelector('#controlled-position'),
       serveType: doc.querySelector('#serve-type'),
       revealServe: doc.querySelector('#reveal-serve'),
+      difficulty: doc.querySelector('#difficulty'),
       activeServe: doc.querySelector('#active-serve'),
+      decisionResult: doc.querySelector('#decision-result'),
       endSession: doc.querySelector('#end-session')
     };
     this.positionButtons = [...doc.querySelectorAll('[data-position]')];
+    this.resultTimer = null;
   }
 
   update({ score, streak, reaction, state, feedback }) {
@@ -52,6 +55,32 @@ export class Hud {
 
   onRevealServeChange(callback) {
     this.e.revealServe?.addEventListener('change', () => callback(this.e.revealServe.value === 'show'));
+  }
+
+  onDifficultyChange(callback) {
+    this.e.difficulty?.addEventListener('change', () => callback(this.e.difficulty.value));
+  }
+
+  setDifficulty(key) {
+    if (this.e.difficulty && DIFFICULTIES[key]) this.e.difficulty.value = key;
+  }
+
+  showDecisionResult({ text, tone, durationMs = 900 }) {
+    if (!this.e.decisionResult) return;
+    if (this.resultTimer) clearTimeout(this.resultTimer);
+    this.e.decisionResult.textContent = text;
+    this.e.decisionResult.dataset.tone = tone;
+    this.e.decisionResult.hidden = false;
+    this.resultTimer = setTimeout(() => this.clearDecisionResult(), durationMs);
+  }
+
+  clearDecisionResult() {
+    if (this.resultTimer) clearTimeout(this.resultTimer);
+    this.resultTimer = null;
+    if (!this.e.decisionResult) return;
+    this.e.decisionResult.hidden = true;
+    this.e.decisionResult.textContent = '';
+    delete this.e.decisionResult.dataset.tone;
   }
 
   setServeSettings({ selectedServeType, revealServeType }) {
