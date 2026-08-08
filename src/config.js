@@ -31,6 +31,12 @@ export const SERVE_TYPES = Object.freeze({
   deepTopspin: { label: 'Deep Topspin' }
 });
 
+export const DIFFICULTIES = Object.freeze({
+  easy: Object.freeze({ label: 'Easy', generatorValue: 'easy' }),
+  medium: Object.freeze({ label: 'Medium', generatorValue: 'normal' }),
+  difficult: Object.freeze({ label: 'Difficult', generatorValue: 'hard' })
+});
+
 export const CONCRETE_SERVE_TYPES = Object.freeze([
   'standingFloat',
   'jumpFloat',
