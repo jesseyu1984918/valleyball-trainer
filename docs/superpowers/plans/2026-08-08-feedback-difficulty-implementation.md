@@ -4,7 +4,7 @@
 
 **Goal:** Make MINE/LEAVE assessment immediately visible with a temporary centered result overlay and let players choose Easy, Medium, or Difficult serve difficulty.
 
-**Architecture:** Keep difficulty physics in `ServeGenerator`, expose stable player-facing difficulty metadata from `config.js`, store the selected difficulty in `Game`, and keep presentation/event handling in `Hud`. Extract the result-message decision into a small pure helper so all four result states, including missed calls, can be tested without constructing Three.js/WebGL.
+**Architecture:** Keep difficulty physics in `ServeGenerator`, expose stable player-facing difficulty metadata from `config.js`, store the selected difficulty in `Game`, and keep presentation/event handling in `Hud`. Extract result-message mapping and difficulty resolution into small pure helpers so behavior can be tested without constructing Three.js/WebGL.
 
 **Tech Stack:** Vite, vanilla JavaScript, Three.js, Vitest, existing static Docker/nginx deployment.
 
@@ -55,7 +55,7 @@ describe('serve difficulty', () => {
     });
   });
 
-  it('orders speed and movement from easy through difficult', () => {
+  it('orders speed and float movement from easy through difficult', () => {
     const easy = createServeScenario({ rng: fixedRng, difficulty: 'easy', serveType: 'jumpFloat' });
     const medium = createServeScenario({ rng: fixedRng, difficulty: 'normal', serveType: 'jumpFloat' });
     const difficult = createServeScenario({ rng: fixedRng, difficulty: 'hard', serveType: 'jumpFloat' });
@@ -225,21 +225,62 @@ git commit -m "feat: add decision feedback mapping"
 - Produces: `Hud.showDecisionResult({ text, tone, durationMs = 900 }): void`.
 - Produces: `Hud.clearDecisionResult(): void`.
 
-- [ ] **Step 1: Add failing HUD tests with a minimal fake DOM**
+- [ ] **Step 1: Add failing HUD tests with a concrete fake DOM**
 
-Create `src/ui/Hud.test.js` using small fake elements with `addEventListener`, `classList`, `dataset`, `setAttribute`, `hidden`, `value`, and `textContent` fields. Cover:
+Create `src/ui/Hud.test.js` with this minimal fixture pattern:
 
 ```js
-it('defaults difficulty UI to medium');
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Hud } from './Hud.js';
+
+function fakeElement(initial = {}) {
+  const listeners = {};
+  return {
+    textContent: '',
+    value: '',
+    hidden: false,
+    dataset: {},
+    classList: { toggle: vi.fn() },
+    setAttribute: vi.fn(),
+    addEventListener: vi.fn((type, callback) => { listeners[type] = callback; }),
+    dispatch(type) { listeners[type]?.(); },
+    ...initial
+  };
+}
+
+function makeDocument() {
+  const elements = {
+    '#score': fakeElement(), '#streak': fakeElement(), '#reaction': fakeElement(),
+    '#round-state': fakeElement(), '#feedback': fakeElement(), '#controlled-position': fakeElement(),
+    '#serve-type': fakeElement({ value: 'random' }), '#reveal-serve': fakeElement({ value: 'show' }),
+    '#active-serve': fakeElement(), '#end-session': fakeElement(),
+    '#difficulty': fakeElement({ value: 'medium' }), '#decision-result': fakeElement({ hidden: true })
+  };
+  return {
+    elements,
+    querySelector: (selector) => elements[selector] ?? null,
+    querySelectorAll: () => []
+  };
+}
+```
+
+Cover:
+
+```js
+it('sets difficulty UI to medium');
 it('emits selected difficulty changes');
-it('shows and clears prominent decision feedback');
+it('shows and clears prominent decision feedback after 900 ms');
 it('replaces any existing hide timer when a new result is shown');
 ```
 
-Use `vi.useFakeTimers()` for the 900 ms timeout assertion:
+Use fake timers for the timeout assertion:
 
 ```js
+vi.useFakeTimers();
+const doc = makeDocument();
+const hud = new Hud(doc);
 hud.showDecisionResult({ text: 'CORRECT — MINE', tone: 'correct', durationMs: 900 });
+const result = doc.elements['#decision-result'];
 expect(result.hidden).toBe(false);
 expect(result.textContent).toBe('CORRECT — MINE');
 expect(result.dataset.tone).toBe('correct');
@@ -248,6 +289,8 @@ expect(result.hidden).toBe(false);
 vi.advanceTimersByTime(1);
 expect(result.hidden).toBe(true);
 ```
+
+Restore timers in `afterEach(() => vi.useRealTimers())`.
 
 - [ ] **Step 2: Run and confirm failure**
 
@@ -279,7 +322,7 @@ Add a separate overlay near the existing `#feedback` element:
 
 - [ ] **Step 4: Implement HUD event/state methods**
 
-Update `src/ui/Hud.js` to:
+Update `src/ui/Hud.js` to import:
 
 ```js
 import { DIFFICULTIES, RECEIVER_POSITIONS, SERVE_TYPES } from '../config.js';
@@ -317,7 +360,7 @@ clearDecisionResult() {
 
 - [ ] **Step 5: Add desktop/mobile result styling**
 
-Extend `src/styles.css` so `#decision-result` is centered independently of the bottom feedback, has a high z-index below the session modal, large bold text, responsive width, and distinct correct/wrong visual treatment. Use selectors such as:
+Extend `src/styles.css` with:
 
 ```css
 #decision-result{position:absolute;left:50%;top:48%;transform:translate(-50%,-50%);z-index:6;width:min(760px,calc(100vw - 32px));padding:22px 28px;border-radius:16px;text-align:center;font-size:clamp(24px,5vw,52px);font-weight:800;letter-spacing:.02em;backdrop-filter:blur(8px)}
@@ -326,7 +369,11 @@ Extend `src/styles.css` so `#decision-result` is centered independently of the b
 #decision-result[data-tone="wrong"]{background:#521b1be8;border:2px solid #ff9b9b}
 ```
 
-Keep `#feedback` in its current bottom position.
+Keep `#feedback` in its current bottom position. Under the existing `@media(max-width:560px)` rule, add:
+
+```css
+#decision-result{width:calc(100vw - 20px);padding:18px 14px;font-size:clamp(22px,8vw,36px)}
+```
 
 - [ ] **Step 6: Run focused tests and production build**
 
@@ -349,50 +396,75 @@ git commit -m "feat: add difficulty and prominent result HUD"
 ### Task 4: Game integration for next-round difficulty and feedback
 
 **Files:**
+- Create: `src/game/GameSettings.js`
+- Create: `src/game/GameSettings.test.js`
 - Modify: `src/game/Game.js`
-- Modify: `src/game/GameSessionIntegration.test.js`
 
 **Interfaces:**
 - Consumes: `DIFFICULTIES` and `buildDecisionFeedback()`.
+- Produces: `resolveGeneratorDifficulty(selectedDifficulty): 'easy' | 'normal' | 'hard'`.
 - `Game.selectedDifficulty` stores player-facing keys `easy | medium | difficult`.
-- `resetRound()` passes `DIFFICULTIES[this.selectedDifficulty].generatorValue` into `createServeScenario()`.
 
-- [ ] **Step 1: Extend integration tests around pure state helpers**
+- [ ] **Step 1: Write failing difficulty-resolution tests**
 
-To avoid WebGL construction in tests, add these pure helpers to `src/game/Game.js` or, preferably, a focused `src/game/GameSettings.js` if keeping `Game.js` testable requires isolation:
+Create `src/game/GameSettings.test.js`:
 
 ```js
+import { describe, expect, it } from 'vitest';
+import { resolveGeneratorDifficulty } from './GameSettings.js';
+
+describe('resolveGeneratorDifficulty', () => {
+  it('maps UI difficulty keys to generator values', () => {
+    expect(resolveGeneratorDifficulty('easy')).toBe('easy');
+    expect(resolveGeneratorDifficulty('medium')).toBe('normal');
+    expect(resolveGeneratorDifficulty('difficult')).toBe('hard');
+  });
+
+  it('falls back to normal for an invalid key', () => {
+    expect(resolveGeneratorDifficulty('invalid')).toBe('normal');
+  });
+});
+```
+
+- [ ] **Step 2: Run and confirm failure**
+
+```bash
+npm test -- --run src/game/GameSettings.test.js
+```
+
+Expected: FAIL because `GameSettings.js` does not exist.
+
+- [ ] **Step 3: Implement the difficulty resolver**
+
+Create `src/game/GameSettings.js`:
+
+```js
+import { DIFFICULTIES } from '../config.js';
+
 export function resolveGeneratorDifficulty(selectedDifficulty) {
   return DIFFICULTIES[selectedDifficulty]?.generatorValue ?? 'normal';
 }
 ```
 
-Extend `src/game/GameSessionIntegration.test.js` (or create `src/game/GameSettings.test.js`) with:
-
-```js
-expect(resolveGeneratorDifficulty('easy')).toBe('easy');
-expect(resolveGeneratorDifficulty('medium')).toBe('normal');
-expect(resolveGeneratorDifficulty('difficult')).toBe('hard');
-expect(resolveGeneratorDifficulty('invalid')).toBe('normal');
-```
-
-- [ ] **Step 2: Run focused test and confirm failure**
+Run:
 
 ```bash
-npm test -- --run src/game/GameSessionIntegration.test.js
+npm test -- --run src/game/GameSettings.test.js
 ```
 
-Expected: FAIL because the helper/integration does not exist yet.
+Expected: PASS.
 
-- [ ] **Step 3: Integrate difficulty state**
+- [ ] **Step 4: Integrate difficulty state into Game**
 
-In `Game`:
+Update `src/game/Game.js` imports to include `DIFFICULTIES`, `resolveGeneratorDifficulty`, and `buildDecisionFeedback`.
+
+In the constructor, next to serve settings, add:
 
 ```js
 this.selectedDifficulty = 'medium';
 ```
 
-After HUD construction:
+After HUD construction/setup, add:
 
 ```js
 this.hud.setDifficulty(this.selectedDifficulty);
@@ -418,9 +490,9 @@ createServeScenario({
 
 Because scenarios are created only in `resetRound()`, a selector change during countdown/serve/feedback affects the next scenario and does not mutate the current ball.
 
-- [ ] **Step 4: Integrate prominent result display**
+- [ ] **Step 5: Integrate prominent result display**
 
-Import `buildDecisionFeedback` and, in `evaluate()` after `result` and `decision` exist:
+In `evaluate()` after `result` and `decision` exist, add:
 
 ```js
 this.hud.showDecisionResult(buildDecisionFeedback({
@@ -429,29 +501,29 @@ this.hud.showDecisionResult(buildDecisionFeedback({
 }));
 ```
 
-At the beginning of `resetRound()` call:
+At the beginning of `resetRound()` add:
 
 ```js
 this.hud.clearDecisionResult();
 ```
 
-Also clear it in `startNewSession()` so no stale result survives session reset.
+Also add `this.hud.clearDecisionResult();` in `startNewSession()` so no stale result survives session reset.
 
-Do not alter the existing bottom `hud.update({ feedback: ... })` message or feedback timing.
+Do not alter the existing bottom `hud.update({ feedback: ... })` message or `ROUND_TIMING.feedbackMs`.
 
-- [ ] **Step 5: Run focused and full tests**
+- [ ] **Step 6: Run focused and full tests**
 
 ```bash
-npm test -- --run src/game/GameSessionIntegration.test.js
+npm test -- --run src/game/GameSettings.test.js src/ui/DecisionFeedback.test.js src/ui/Hud.test.js
 npm test -- --run
 ```
 
 Expected: all tests PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add src/game/Game.js src/game/GameSessionIntegration.test.js
+git add src/game/GameSettings.js src/game/GameSettings.test.js src/game/Game.js
 git commit -m "feat: integrate difficulty and decision feedback"
 ```
 
