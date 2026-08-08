@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { FORMATION, POSITION_SHORTCUTS, RECEIVER_POSITIONS, ROUND_TIMING, SERVE_TYPES } from '../config.js';
+import { DIFFICULTIES, FORMATION, POSITION_SHORTCUTS, RECEIVER_POSITIONS, ROUND_TIMING, SERVE_TYPES } from '../config.js';
 import { createCourt } from './Court.js';
 import { Player } from './Player.js';
 import { Teammate } from './Teammate.js';
@@ -7,8 +7,10 @@ import { Ball } from './Ball.js';
 import { createServeScenario } from './ServeGenerator.js';
 import { decideOwnership } from './DecisionEngine.js';
 import { scoreRound } from './Scoring.js';
+import { resolveGeneratorDifficulty } from './GameSettings.js';
 import { Keyboard } from '../input/Keyboard.js';
 import { Hud } from '../ui/Hud.js';
+import { buildDecisionFeedback } from '../ui/DecisionFeedback.js';
 import { SessionDialog } from '../ui/SessionDialog.js';
 import { SessionTracker } from '../session/SessionTracker.js';
 import {
@@ -35,6 +37,7 @@ export class Game {
     this.rebuildFormation();
 
     this.selectedServeType = 'random';
+    this.selectedDifficulty = 'medium';
     this.revealServeType = true;
     this.ball = new Ball(this.scene);
     this.keyboard = new Keyboard();
@@ -47,12 +50,16 @@ export class Game {
 
     this.hud.setPosition(this.controlledSlot);
     this.hud.setServeSettings({ selectedServeType: this.selectedServeType, revealServeType: this.revealServeType });
+    this.hud.setDifficulty(this.selectedDifficulty);
     this.hud.onPositionSelect((slot) => this.setControlledSlot(slot));
     this.hud.onServeTypeSelect((serveType) => {
       if (SERVE_TYPES[serveType]) this.selectedServeType = serveType;
     });
     this.hud.onRevealServeChange((reveal) => {
       this.revealServeType = reveal;
+    });
+    this.hud.onDifficultyChange((key) => {
+      if (DIFFICULTIES[key]) this.selectedDifficulty = key;
     });
     this.hud.onEndSession(() => this.openSessionSummary());
 
@@ -107,9 +114,13 @@ export class Game {
   }
 
   resetRound(now) {
+    this.hud.clearDecisionResult();
     this.player.reset(FORMATION[this.controlledSlot]);
     for (const teammate of this.teammates) teammate.reset(FORMATION[teammate.id]);
-    this.scenario = createServeScenario({ difficulty: 'normal', serveType: this.selectedServeType });
+    this.scenario = createServeScenario({
+      difficulty: resolveGeneratorDifficulty(this.selectedDifficulty),
+      serveType: this.selectedServeType
+    });
     this.ball.start(this.scenario);
     this.ball.mesh.visible = false;
     this.phase = 'countdown';
@@ -165,6 +176,10 @@ export class Game {
     this.phaseStart = now;
     const serveLabel = SERVE_TYPES[this.scenario.serveType].label;
     this.hud.setActiveServe(serveLabel);
+    this.hud.showDecisionResult(buildDecisionFeedback({
+      correct: result.correct,
+      expectedCall: decision.expectedCall
+    }));
     this.hud.update({
       score: this.score,
       streak: this.streak,
@@ -213,6 +228,7 @@ export class Game {
     this.attemptRecorded = false;
     this.hasServeStarted = false;
     this.sessionPaused = false;
+    this.hud.clearDecisionResult();
     this.hud.update({ score: 0, streak: 0, reaction: '—', state: 'Countdown', feedback: 'New session started.' });
     this.sessionDialog.close();
     this.last = performance.now();
