@@ -4,6 +4,8 @@ import { createCourt } from './Court.js';
 import { Player } from './Player.js';
 import { Teammate } from './Teammate.js';
 import { Ball } from './Ball.js';
+import { TrajectoryGuide } from './TrajectoryGuide.js';
+import { guideRadius, predictionProgress, shouldShowGuide } from './TrajectoryGuideModel.js';
 import { createServeScenario } from './ServeGenerator.js';
 import { decideOwnership } from './DecisionEngine.js';
 import { scoreRound } from './Scoring.js';
@@ -38,8 +40,11 @@ export class Game {
 
     this.selectedServeType = 'random';
     this.selectedDifficulty = 'medium';
+    this.selectedGuidanceMode = 'guided';
+    this.guideOwnership = 'leave';
     this.revealServeType = true;
     this.ball = new Ball(this.scene);
+    this.trajectoryGuide = new TrajectoryGuide(this.scene);
     this.keyboard = new Keyboard();
     this.hud = new Hud();
     this.sessionTracker = new SessionTracker();
@@ -51,6 +56,7 @@ export class Game {
     this.hud.setPosition(this.controlledSlot);
     this.hud.setServeSettings({ selectedServeType: this.selectedServeType, revealServeType: this.revealServeType });
     this.hud.setDifficulty(this.selectedDifficulty);
+    this.hud.setGuidanceMode(this.selectedGuidanceMode);
     this.hud.onPositionSelect((slot) => this.setControlledSlot(slot));
     this.hud.onServeTypeSelect((serveType) => {
       if (SERVE_TYPES[serveType]) this.selectedServeType = serveType;
@@ -60,6 +66,9 @@ export class Game {
     });
     this.hud.onDifficultyChange((key) => {
       if (DIFFICULTIES[key]) this.selectedDifficulty = key;
+    });
+    this.hud.onGuidanceModeChange((mode) => {
+      if (mode === 'guided' || mode === 'readFirst') this.selectedGuidanceMode = mode;
     });
     this.hud.onEndSession(() => this.openSessionSummary());
 
@@ -115,6 +124,7 @@ export class Game {
 
   resetRound(now) {
     this.hud.clearDecisionResult();
+    this.trajectoryGuide.reset();
     this.player.reset(FORMATION[this.controlledSlot]);
     for (const teammate of this.teammates) teammate.reset(FORMATION[teammate.id]);
     this.scenario = createServeScenario({
@@ -137,12 +147,32 @@ export class Game {
     this.hasServeStarted = true;
     this.roundStart = now;
     this.ball.mesh.visible = true;
+    const guideDecision = decideOwnership({
+      landing: this.scenario.landing,
+      receivers: this.receiverSnapshots(),
+      controlledSlot: this.controlledSlot
+    });
+    this.guideOwnership = guideDecision.expectedCall === 'mine' ? 'mine' : 'leave';
     this.hud.update({ state: 'Serve', feedback: 'Move with WASD. Call MINE or LEAVE before the ball arrives.' });
+  }
+
+  updateTrajectoryGuide(progress) {
+    if (!shouldShowGuide({ mode: this.selectedGuidanceMode, progress, scenario: this.scenario })) {
+      this.trajectoryGuide.hide();
+      return;
+    }
+    const predicted = this.ball.getPosition(predictionProgress(progress));
+    this.trajectoryGuide.update({
+      position: { x: predicted.x, z: predicted.z },
+      radius: guideRadius(progress),
+      ownership: this.guideOwnership
+    });
   }
 
   evaluate(call, now) {
     if (this.decisionDone || this.phase !== 'serve') return;
     this.decisionDone = true;
+    this.trajectoryGuide.hide();
     const reactionMs = now - this.roundStart;
     const decision = decideOwnership({
       landing: this.scenario.landing,
@@ -228,6 +258,7 @@ export class Game {
     this.attemptRecorded = false;
     this.hasServeStarted = false;
     this.sessionPaused = false;
+    this.trajectoryGuide.reset();
     this.hud.clearDecisionResult();
     this.hud.update({ score: 0, streak: 0, reaction: '—', state: 'Countdown', feedback: 'New session started.' });
     this.sessionDialog.close();
@@ -260,6 +291,7 @@ export class Game {
       this.player.update(this.keyboard.movement(), dt);
       const progress = (now - this.roundStart) / this.scenario.durationMs;
       this.ball.update(progress);
+      this.updateTrajectoryGuide(progress);
       if (action === 'm' || action === 'l') this.evaluate(action === 'm' ? 'mine' : 'leave', now);
       if (progress >= ROUND_TIMING.decisionPlaneProgress && !this.decisionDone) this.evaluate(null, now);
     } else if (this.phase === 'feedback') {
