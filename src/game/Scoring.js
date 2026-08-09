@@ -8,7 +8,8 @@ export function scoreRound({
   landing,
   reactionMs,
   crossedLane = false,
-  movementRequired = true
+  movementRequired = true,
+  movementPointsOverride = null
 }) {
   const correct = call === decision.expectedCall;
   const decisionPoints = correct ? SCORING.decisionMax : 0;
@@ -17,6 +18,8 @@ export function scoreRound({
 
   if (!movementRequired) {
     movementPoints = SCORING.movementMax;
+  } else if (movementPointsOverride !== null) {
+    movementPoints = movementPointsOverride;
   } else if (decision.expectedCall === 'mine') {
     movementPoints = Math.round(
       SCORING.movementMax * clamp(1 - distance(player, ideal) / 2.5, 0, 1)
