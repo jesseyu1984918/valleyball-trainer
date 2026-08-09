@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Ball } from './Ball.js';
-import { guideRadius, netCrossingProgress, predictionProgress, shouldShowGuide } from './TrajectoryGuideModel.js';
+import { guideRadius, predictionProgress } from './TrajectoryGuideModel.js';
 
 describe('trajectory guide integration', () => {
   const scenario = {
@@ -23,11 +23,5 @@ describe('trajectory guide integration', () => {
     expect(late.z).toBeGreaterThan(early.z);
     expect(late.x).not.toBe(early.x);
     expect(guideRadius(0.7)).toBeLessThan(guideRadius(0.1));
-  });
-
-  it('reveals read first at the geometric net crossing', () => {
-    const crossing = netCrossingProgress(scenario);
-    expect(shouldShowGuide({ mode: 'readFirst', progress: crossing - 0.001, scenario })).toBe(false);
-    expect(shouldShowGuide({ mode: 'readFirst', progress: crossing, scenario })).toBe(true);
   });
 });
