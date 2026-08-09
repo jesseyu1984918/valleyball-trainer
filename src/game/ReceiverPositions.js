@@ -7,7 +7,7 @@ export function isValidSlot(slot) {
 }
 
 export function canSelectPosition(phase, hasServeStarted) {
-  return !hasServeStarted || phase === 'feedback';
+  return !hasServeStarted || phase === 'feedback' || phase === 'paused';
 }
 
 export function teammateSlots(controlledSlot) {
@@ -19,16 +19,12 @@ export function orderedReceiverSnapshots(controlledSlot, playerSnapshot, teammat
   const teammatesById = new Map(teammateSnapshots.map((snapshot) => [snapshot.id, snapshot]));
 
   return SLOT_ORDER.map((slot) => {
-    if (slot === controlledSlot) {
-      return { ...playerSnapshot, id: slot };
-    }
-
+    if (slot === controlledSlot) return { ...playerSnapshot, id: slot };
     const teammate = teammatesById.get(slot);
     if (!teammate) {
       const formation = FORMATION[slot];
       return { id: slot, x: formation.x, z: formation.z, velocity: { x: 0, z: 0 }, speed: 0 };
     }
-
     return teammate;
   });
 }
