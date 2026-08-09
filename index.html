@@ -41,11 +41,13 @@
       </select>
     </label>
     <div id="active-serve">Serve: Random</div>
+    <button id="training-pause" type="button">Pause</button>
     <button id="end-session" type="button">End Session</button>
   </section>
   <div id="controls">WASD move · M mine · L leave · 1/2/3 position · R restart after result</div>
   <div id="feedback">Loading trainer…</div>
   <div id="decision-result" hidden aria-live="assertive"></div>
+  <div id="pause-message" hidden aria-live="polite"></div>
   <div id="session-overlay" hidden>
     <section id="session-dialog" role="dialog" aria-modal="true" aria-labelledby="session-title">
       <h2 id="session-title">Session Summary</h2>
