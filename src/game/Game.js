@@ -5,10 +5,11 @@ import { Player } from './Player.js';
 import { Teammate } from './Teammate.js';
 import { Ball } from './Ball.js';
 import { TrajectoryGuide } from './TrajectoryGuide.js';
-import { guideRadius, predictionProgress, shouldShowGuide } from './TrajectoryGuideModel.js';
+import { guideRadius, predictionProgress } from './TrajectoryGuideModel.js';
 import { createServeScenario } from './ServeGenerator.js';
 import { decideOwnership } from './DecisionEngine.js';
 import { scoreRound } from './Scoring.js';
+import { classifyCall, shouldFinalizeMove } from './PostCallFlow.js';
 import { resolveGeneratorDifficulty } from './GameSettings.js';
 import { Keyboard } from '../input/Keyboard.js';
 import { Hud } from '../ui/Hud.js';
@@ -40,8 +41,7 @@ export class Game {
 
     this.selectedServeType = 'random';
     this.selectedDifficulty = 'medium';
-    this.selectedGuidanceMode = 'guided';
-    this.guideOwnership = 'leave';
+    this.selectedGuidanceMode = 'on';
     this.revealServeType = true;
     this.ball = new Ball(this.scene);
     this.trajectoryGuide = new TrajectoryGuide(this.scene);
@@ -52,6 +52,9 @@ export class Game {
     this.sessionPaused = false;
     this.pauseStartedAt = 0;
     this.attemptRecorded = false;
+    this.roundDecision = null;
+    this.pendingCall = null;
+    this.pendingReactionMs = null;
 
     this.hud.setPosition(this.controlledSlot);
     this.hud.setServeSettings({ selectedServeType: this.selectedServeType, revealServeType: this.revealServeType });
@@ -68,7 +71,10 @@ export class Game {
       if (DIFFICULTIES[key]) this.selectedDifficulty = key;
     });
     this.hud.onGuidanceModeChange((mode) => {
-      if (mode === 'guided' || mode === 'readFirst') this.selectedGuidanceMode = mode;
+      if (mode === 'on' || mode === 'off') {
+        this.selectedGuidanceMode = mode;
+        if (mode === 'off') this.trajectoryGuide.hide();
+      }
     });
     this.hud.onEndSession(() => this.openSessionSummary());
 
@@ -137,6 +143,9 @@ export class Game {
     this.phaseStart = now;
     this.decisionDone = false;
     this.attemptRecorded = false;
+    this.roundDecision = null;
+    this.pendingCall = null;
+    this.pendingReactionMs = null;
     const serveLabel = this.revealServeType ? SERVE_TYPES[this.scenario.serveType].label : 'Unknown';
     this.hud.setActiveServe(serveLabel);
     this.hud.update({ state: 'Countdown', reaction: '—', feedback: `Serve: ${serveLabel}. Read the server and be ready to move.` });
@@ -147,17 +156,17 @@ export class Game {
     this.hasServeStarted = true;
     this.roundStart = now;
     this.ball.mesh.visible = true;
-    const guideDecision = decideOwnership({
+    this.trajectoryGuide.hide();
+    this.roundDecision = decideOwnership({
       landing: this.scenario.landing,
       receivers: this.receiverSnapshots(),
       controlledSlot: this.controlledSlot
     });
-    this.guideOwnership = guideDecision.expectedCall === 'mine' ? 'mine' : 'leave';
     this.hud.update({ state: 'Serve', feedback: 'Move with WASD. Call MINE or LEAVE before the ball arrives.' });
   }
 
   updateTrajectoryGuide(progress) {
-    if (!shouldShowGuide({ mode: this.selectedGuidanceMode, progress, scenario: this.scenario })) {
+    if (this.phase !== 'move' || this.selectedGuidanceMode !== 'on') {
       this.trajectoryGuide.hide();
       return;
     }
@@ -165,26 +174,68 @@ export class Game {
     this.trajectoryGuide.update({
       position: { x: predicted.x, z: predicted.z },
       radius: guideRadius(progress),
-      ownership: this.guideOwnership
+      ownership: 'mine'
     });
   }
 
   evaluate(call, now) {
     if (this.decisionDone || this.phase !== 'serve') return;
-    this.decisionDone = true;
-    this.trajectoryGuide.hide();
+
     const reactionMs = now - this.roundStart;
-    const decision = decideOwnership({
+    const decision = this.roundDecision ?? decideOwnership({
       landing: this.scenario.landing,
       receivers: this.receiverSnapshots(),
       controlledSlot: this.controlledSlot
     });
+    this.roundDecision = decision;
+
+    if (classifyCall({ call, decision }) === 'move') {
+      this.decisionDone = true;
+      this.pendingCall = call;
+      this.pendingReactionMs = reactionMs;
+      this.phase = 'move';
+      this.phaseStart = now;
+      const progress = reactionMs / this.scenario.durationMs;
+      if (this.selectedGuidanceMode === 'on') this.updateTrajectoryGuide(progress);
+      else this.trajectoryGuide.hide();
+      this.hud.update({
+        reaction: `${Math.round(reactionMs)} ms`,
+        state: 'Move',
+        feedback: 'MINE confirmed — move into the target zone.'
+      });
+      if (shouldFinalizeMove(progress)) {
+        this.finalizeRound({ call, reactionMs, movementRequired: true, now });
+      }
+      return;
+    }
+
+    const correctLeave = call === 'leave' && decision.expectedCall === 'leave';
+    this.finalizeRound({
+      call,
+      reactionMs,
+      movementRequired: !correctLeave,
+      now
+    });
+  }
+
+  finalizeRound({ call, reactionMs, movementRequired, now }) {
+    if (this.phase === 'feedback') return;
+    const decision = this.roundDecision ?? decideOwnership({
+      landing: this.scenario.landing,
+      receivers: this.receiverSnapshots(),
+      controlledSlot: this.controlledSlot
+    });
+    this.roundDecision = decision;
+    this.decisionDone = true;
+    this.trajectoryGuide.hide();
+
     const result = scoreRound({
       call,
       decision,
       player: this.player.snapshot(),
       landing: this.scenario.landing,
-      reactionMs
+      reactionMs,
+      movementRequired
     });
 
     const attempt = buildAttemptRecord({
@@ -204,6 +255,8 @@ export class Game {
     this.streak = result.correct ? this.streak + 1 : 0;
     this.phase = 'feedback';
     this.phaseStart = now;
+    this.pendingCall = null;
+    this.pendingReactionMs = null;
     const serveLabel = SERVE_TYPES[this.scenario.serveType].label;
     this.hud.setActiveServe(serveLabel);
     this.hud.showDecisionResult(buildDecisionFeedback({
@@ -215,7 +268,7 @@ export class Game {
       streak: this.streak,
       reaction: `${Math.round(reactionMs)} ms`,
       state: 'Feedback',
-      feedback: `${result.correct ? 'Correct' : 'Incorrect'} — ${serveLabel}. ${decision.explanation} +${result.total}`
+      feedback: `${result.correct ? 'Correct' : 'Incorrect'} — ${serveLabel}. ${decision.explanation} Movement ${result.movementPoints}. +${result.total}`
     });
   }
 
@@ -258,6 +311,9 @@ export class Game {
     this.attemptRecorded = false;
     this.hasServeStarted = false;
     this.sessionPaused = false;
+    this.roundDecision = null;
+    this.pendingCall = null;
+    this.pendingReactionMs = null;
     this.trajectoryGuide.reset();
     this.hud.clearDecisionResult();
     this.hud.update({ score: 0, streak: 0, reaction: '—', state: 'Countdown', feedback: 'New session started.' });
@@ -291,9 +347,24 @@ export class Game {
       this.player.update(this.keyboard.movement(), dt);
       const progress = (now - this.roundStart) / this.scenario.durationMs;
       this.ball.update(progress);
-      this.updateTrajectoryGuide(progress);
+      this.trajectoryGuide.hide();
       if (action === 'm' || action === 'l') this.evaluate(action === 'm' ? 'mine' : 'leave', now);
-      if (progress >= ROUND_TIMING.decisionPlaneProgress && !this.decisionDone) this.evaluate(null, now);
+      if (this.phase === 'serve' && progress >= ROUND_TIMING.decisionPlaneProgress && !this.decisionDone) {
+        this.evaluate(null, now);
+      }
+    } else if (this.phase === 'move') {
+      this.player.update(this.keyboard.movement(), dt);
+      const progress = (now - this.roundStart) / this.scenario.durationMs;
+      this.ball.update(progress);
+      this.updateTrajectoryGuide(progress);
+      if (shouldFinalizeMove(progress)) {
+        this.finalizeRound({
+          call: this.pendingCall,
+          reactionMs: this.pendingReactionMs,
+          movementRequired: true,
+          now
+        });
+      }
     } else if (this.phase === 'feedback') {
       if (action === 'r' || now - this.phaseStart >= ROUND_TIMING.feedbackMs) this.resetRound(now);
     }
