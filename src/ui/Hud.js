@@ -12,6 +12,7 @@ export class Hud {
       serveType: doc.querySelector('#serve-type'),
       revealServe: doc.querySelector('#reveal-serve'),
       difficulty: doc.querySelector('#difficulty'),
+      guidanceMode: doc.querySelector('#guidance-mode'),
       activeServe: doc.querySelector('#active-serve'),
       decisionResult: doc.querySelector('#decision-result'),
       endSession: doc.querySelector('#end-session')
@@ -63,6 +64,14 @@ export class Hud {
 
   setDifficulty(key) {
     if (this.e.difficulty && DIFFICULTIES[key]) this.e.difficulty.value = key;
+  }
+
+  onGuidanceModeChange(callback) {
+    this.e.guidanceMode?.addEventListener('change', () => callback(this.e.guidanceMode.value));
+  }
+
+  setGuidanceMode(mode) {
+    if (this.e.guidanceMode && (mode === 'guided' || mode === 'readFirst')) this.e.guidanceMode.value = mode;
   }
 
   showDecisionResult({ text, tone, durationMs = 900 }) {
