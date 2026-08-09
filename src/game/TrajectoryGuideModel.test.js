@@ -1,19 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { guideRadius, netCrossingProgress, predictionProgress, shouldShowGuide } from './TrajectoryGuideModel.js';
-
-const scenario = { start: { z: -8 }, landing: { z: 8 } };
+import { guideRadius, predictionProgress } from './TrajectoryGuideModel.js';
 
 describe('trajectory guide model', () => {
-  it('computes net crossing from trajectory geometry', () => {
-    expect(netCrossingProgress(scenario)).toBeCloseTo(0.5);
-  });
-
-  it('shows guided immediately and read first at net crossing', () => {
-    expect(shouldShowGuide({ mode: 'guided', progress: 0, scenario })).toBe(true);
-    expect(shouldShowGuide({ mode: 'readFirst', progress: 0.49, scenario })).toBe(false);
-    expect(shouldShowGuide({ mode: 'readFirst', progress: 0.5, scenario })).toBe(true);
-  });
-
   it('shrinks monotonically from 1.2m to 0.45m radius', () => {
     const samples = [0, 0.25, 0.5, 0.75, 1].map(guideRadius);
     expect(samples[0]).toBeCloseTo(1.2);
