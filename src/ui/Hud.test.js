@@ -18,16 +18,18 @@ function element(value = '') {
 
 function makeHud() {
   const difficulty = element('medium');
+  const guidanceMode = element('guided');
   const decisionResult = element();
   const nodes = {
     '#difficulty': difficulty,
+    '#guidance-mode': guidanceMode,
     '#decision-result': decisionResult
   };
   const doc = {
     querySelector(selector) { return nodes[selector] ?? element(); },
     querySelectorAll() { return []; }
   };
-  return { hud: new Hud(doc), difficulty, decisionResult };
+  return { hud: new Hud(doc), difficulty, guidanceMode, decisionResult };
 }
 
 afterEach(() => vi.useRealTimers());
@@ -46,6 +48,21 @@ describe('Hud difficulty and decision result', () => {
     difficulty.value = 'difficult';
     difficulty.listeners.change();
     expect(callback).toHaveBeenCalledWith('difficult');
+  });
+
+  it('defaults trajectory guidance UI to guided', () => {
+    const { hud, guidanceMode } = makeHud();
+    hud.setGuidanceMode('guided');
+    expect(guidanceMode.value).toBe('guided');
+  });
+
+  it('emits trajectory guidance mode changes', () => {
+    const { hud, guidanceMode } = makeHud();
+    const callback = vi.fn();
+    hud.onGuidanceModeChange(callback);
+    guidanceMode.value = 'readFirst';
+    guidanceMode.listeners.change();
+    expect(callback).toHaveBeenCalledWith('readFirst');
   });
 
   it('shows and clears prominent decision feedback', () => {
