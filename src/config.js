@@ -66,5 +66,7 @@ export const SCORING = Object.freeze({
   movementMax: 25,
   reactionMax: 15,
   crossingPenalty: 5,
-  idealContactOffsetZ: 0.65
+  idealContactOffsetZ: 0.65,
+  playerBodyRadius: 0.28,
+  closePositionBand: 0.5
 });
