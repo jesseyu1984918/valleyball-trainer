@@ -15,6 +15,8 @@ export class Hud {
       guidanceMode: doc.querySelector('#guidance-mode'),
       activeServe: doc.querySelector('#active-serve'),
       decisionResult: doc.querySelector('#decision-result'),
+      pauseMessage: doc.querySelector('#pause-message'),
+      trainingPause: doc.querySelector('#training-pause'),
       endSession: doc.querySelector('#end-session')
     };
     this.positionButtons = [...doc.querySelectorAll('[data-position]')];
@@ -30,13 +32,18 @@ export class Hud {
   }
 
   onPositionSelect(callback) {
-    for (const button of this.positionButtons) {
-      button.addEventListener('click', () => callback(button.dataset.position));
-    }
+    for (const button of this.positionButtons) button.addEventListener('click', () => callback(button.dataset.position));
   }
 
-  onEndSession(callback) {
-    this.e.endSession?.addEventListener('click', callback);
+  onEndSession(callback) { this.e.endSession?.addEventListener('click', callback); }
+  onTrainingPause(callback) { this.e.trainingPause?.addEventListener('click', callback); }
+
+  setTrainingPaused(paused) {
+    if (this.e.trainingPause) this.e.trainingPause.textContent = paused ? 'Start Next Round' : 'Pause';
+    if (this.e.pauseMessage) {
+      this.e.pauseMessage.hidden = !paused;
+      this.e.pauseMessage.textContent = paused ? 'PAUSED — adjust settings, then start next round' : '';
+    }
   }
 
   setPosition(slot) {
@@ -50,29 +57,12 @@ export class Hud {
     }
   }
 
-  onServeTypeSelect(callback) {
-    this.e.serveType?.addEventListener('change', () => callback(this.e.serveType.value));
-  }
-
-  onRevealServeChange(callback) {
-    this.e.revealServe?.addEventListener('change', () => callback(this.e.revealServe.value === 'show'));
-  }
-
-  onDifficultyChange(callback) {
-    this.e.difficulty?.addEventListener('change', () => callback(this.e.difficulty.value));
-  }
-
-  setDifficulty(key) {
-    if (this.e.difficulty && DIFFICULTIES[key]) this.e.difficulty.value = key;
-  }
-
-  onGuidanceModeChange(callback) {
-    this.e.guidanceMode?.addEventListener('change', () => callback(this.e.guidanceMode.value));
-  }
-
-  setGuidanceMode(mode) {
-    if (this.e.guidanceMode && (mode === 'on' || mode === 'off')) this.e.guidanceMode.value = mode;
-  }
+  onServeTypeSelect(callback) { this.e.serveType?.addEventListener('change', () => callback(this.e.serveType.value)); }
+  onRevealServeChange(callback) { this.e.revealServe?.addEventListener('change', () => callback(this.e.revealServe.value === 'show')); }
+  onDifficultyChange(callback) { this.e.difficulty?.addEventListener('change', () => callback(this.e.difficulty.value)); }
+  setDifficulty(key) { if (this.e.difficulty && DIFFICULTIES[key]) this.e.difficulty.value = key; }
+  onGuidanceModeChange(callback) { this.e.guidanceMode?.addEventListener('change', () => callback(this.e.guidanceMode.value)); }
+  setGuidanceMode(mode) { if (this.e.guidanceMode && (mode === 'on' || mode === 'off')) this.e.guidanceMode.value = mode; }
 
   showDecisionResult({ text, tone, durationMs = 900 }) {
     if (!this.e.decisionResult) return;
@@ -98,7 +88,5 @@ export class Hud {
     if (this.e.activeServe) this.e.activeServe.textContent = `Serve: ${SERVE_TYPES[selectedServeType]?.label ?? 'Random'}`;
   }
 
-  setActiveServe(label) {
-    if (this.e.activeServe) this.e.activeServe.textContent = `Serve: ${label}`;
-  }
+  setActiveServe(label) { if (this.e.activeServe) this.e.activeServe.textContent = `Serve: ${label}`; }
 }
