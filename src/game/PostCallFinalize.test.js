@@ -28,7 +28,43 @@ function makeFinalizer(playerPosition) {
 }
 
 describe('post-call finalization', () => {
-  it('scores movement from the final player position', () => {
+  it('uses the receive target circle to score and report movement', () => {
+    const { game, recordAttempt } = makeFinalizer({ x: 0.6, z: 7 });
+
+    Game.prototype.finalizeRound.call(game, {
+      call: 'mine',
+      reactionMs: 600,
+      movementRequired: true,
+      movementTarget: { x: 0, z: 7, radius: 0.45 },
+      now: 1900
+    });
+
+    const attempt = recordAttempt.mock.calls[0][0];
+    expect(attempt.movement_points).toBe(25);
+    expect(game.hud.showDecisionResult).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining('IN POSITION') })
+    );
+  });
+
+  it('reports a missed final position from the same target geometry', () => {
+    const { game, recordAttempt } = makeFinalizer({ x: 2, z: 7 });
+
+    Game.prototype.finalizeRound.call(game, {
+      call: 'mine',
+      reactionMs: 600,
+      movementRequired: true,
+      movementTarget: { x: 0, z: 7, radius: 0.45 },
+      now: 1900
+    });
+
+    const attempt = recordAttempt.mock.calls[0][0];
+    expect(attempt.movement_points).toBe(0);
+    expect(game.hud.showDecisionResult).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining('MISSED POSITION') })
+    );
+  });
+
+  it('keeps fallback movement scoring when no movement target is supplied', () => {
     const close = makeFinalizer({ x: 0, z: 7.65 });
     const far = makeFinalizer({ x: 3, z: 8.5 });
 
