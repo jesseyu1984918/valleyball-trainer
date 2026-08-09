@@ -9,11 +9,13 @@ import { guideRadius, predictionProgress } from './TrajectoryGuideModel.js';
 import { createServeScenario } from './ServeGenerator.js';
 import { decideOwnership } from './DecisionEngine.js';
 import { scoreRound } from './Scoring.js';
+import { assessMovement } from './MovementAssessment.js';
 import { classifyCall, shouldFinalizeMove } from './PostCallFlow.js';
 import { resolveGeneratorDifficulty } from './GameSettings.js';
 import { Keyboard } from '../input/Keyboard.js';
 import { Hud } from '../ui/Hud.js';
 import { buildDecisionFeedback } from '../ui/DecisionFeedback.js';
+import { buildMovementFeedback } from '../ui/MovementFeedback.js';
 import { SessionDialog } from '../ui/SessionDialog.js';
 import { SessionTracker } from '../session/SessionTracker.js';
 import {
@@ -165,15 +167,20 @@ export class Game {
     this.hud.update({ state: 'Serve', feedback: 'Move with WASD. Call MINE or LEAVE before the ball arrives.' });
   }
 
+  movementTargetAt(progress) {
+    const predicted = this.ball.getPosition(predictionProgress(progress));
+    return { x: predicted.x, z: predicted.z, radius: guideRadius(progress) };
+  }
+
   updateTrajectoryGuide(progress) {
     if (this.phase !== 'move' || this.selectedGuidanceMode !== 'on') {
       this.trajectoryGuide.hide();
       return;
     }
-    const predicted = this.ball.getPosition(predictionProgress(progress));
+    const target = this.movementTargetAt(progress);
     this.trajectoryGuide.update({
-      position: { x: predicted.x, z: predicted.z },
-      radius: guideRadius(progress),
+      position: { x: target.x, z: target.z },
+      radius: target.radius,
       ownership: 'mine'
     });
   }
@@ -204,7 +211,13 @@ export class Game {
         feedback: 'MINE confirmed — move into the target zone.'
       });
       if (shouldFinalizeMove(progress)) {
-        this.finalizeRound({ call, reactionMs, movementRequired: true, now });
+        this.finalizeRound({
+          call,
+          reactionMs,
+          movementRequired: true,
+          movementTarget: this.movementTargetAt(progress),
+          now
+        });
       }
       return;
     }
@@ -218,7 +231,7 @@ export class Game {
     });
   }
 
-  finalizeRound({ call, reactionMs, movementRequired, now }) {
+  finalizeRound({ call, reactionMs, movementRequired, movementTarget = null, now }) {
     if (this.phase === 'feedback') return;
     const decision = this.roundDecision ?? decideOwnership({
       landing: this.scenario.landing,
@@ -229,13 +242,19 @@ export class Game {
     this.decisionDone = true;
     this.trajectoryGuide.hide();
 
+    const playerSnapshot = this.player.snapshot();
+    const movementAssessment = movementRequired && movementTarget && decision.expectedCall === 'mine'
+      ? assessMovement({ player: playerSnapshot, target: movementTarget })
+      : null;
+
     const result = scoreRound({
       call,
       decision,
-      player: this.player.snapshot(),
+      player: playerSnapshot,
       landing: this.scenario.landing,
       reactionMs,
-      movementRequired
+      movementRequired,
+      movementPointsOverride: movementAssessment?.movementPoints ?? null
     });
 
     const attempt = buildAttemptRecord({
@@ -259,16 +278,21 @@ export class Game {
     this.pendingReactionMs = null;
     const serveLabel = SERVE_TYPES[this.scenario.serveType].label;
     this.hud.setActiveServe(serveLabel);
-    this.hud.showDecisionResult(buildDecisionFeedback({
+    const decisionFeedback = buildDecisionFeedback({
       correct: result.correct,
       expectedCall: decision.expectedCall
-    }));
+    });
+    const movementText = movementAssessment ? buildMovementFeedback(movementAssessment) : null;
+    this.hud.showDecisionResult({
+      ...decisionFeedback,
+      text: movementText ? `${decisionFeedback.text}\n${movementText}` : decisionFeedback.text
+    });
     this.hud.update({
       score: this.score,
       streak: this.streak,
       reaction: `${Math.round(reactionMs)} ms`,
       state: 'Feedback',
-      feedback: `${result.correct ? 'Correct' : 'Incorrect'} — ${serveLabel}. ${decision.explanation} Movement ${result.movementPoints}. +${result.total}`
+      feedback: `${result.correct ? 'Correct' : 'Incorrect'} — ${serveLabel}. ${decision.explanation}${movementText ? ` ${movementText}.` : ''} Movement ${result.movementPoints}. +${result.total}`
     });
   }
 
@@ -362,6 +386,7 @@ export class Game {
           call: this.pendingCall,
           reactionMs: this.pendingReactionMs,
           movementRequired: true,
+          movementTarget: this.movementTargetAt(progress),
           now
         });
       }
