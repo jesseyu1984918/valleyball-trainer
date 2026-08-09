@@ -71,7 +71,7 @@ export class Hud {
   }
 
   setGuidanceMode(mode) {
-    if (this.e.guidanceMode && (mode === 'guided' || mode === 'readFirst')) this.e.guidanceMode.value = mode;
+    if (this.e.guidanceMode && (mode === 'on' || mode === 'off')) this.e.guidanceMode.value = mode;
   }
 
   showDecisionResult({ text, tone, durationMs = 900 }) {
