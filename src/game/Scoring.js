@@ -1,3 +1,40 @@
 import { SCORING } from '../config.js';
 import { distance, clamp } from '../math/vector2.js';
-export function scoreRound({call,decision,player,landing,reactionMs,crossedLane=false}){const correct=call===decision.expectedCall;const decisionPoints=correct?SCORING.decisionMax:0;const ideal={x:landing.x,z:landing.z+SCORING.idealContactOffsetZ};let movementPoints=0;if(decision.expectedCall==='mine'){movementPoints=Math.round(SCORING.movementMax*clamp(1-distance(player,ideal)/2.5,0,1));}else{movementPoints=Math.round(SCORING.movementMax*clamp(1-Math.max(0,2.2-distance(player,landing))/2.2,0,1));}const reactionPoints=Math.round(SCORING.reactionMax*clamp(1-reactionMs/2800,0,1));const penalty=crossedLane?SCORING.crossingPenalty:0;return{correct,decisionPoints,movementPoints,reactionPoints,penalty,total:Math.max(0,decisionPoints+movementPoints+reactionPoints-penalty)};}
+
+export function scoreRound({
+  call,
+  decision,
+  player,
+  landing,
+  reactionMs,
+  crossedLane = false,
+  movementRequired = true
+}) {
+  const correct = call === decision.expectedCall;
+  const decisionPoints = correct ? SCORING.decisionMax : 0;
+  const ideal = { x: landing.x, z: landing.z + SCORING.idealContactOffsetZ };
+  let movementPoints;
+
+  if (!movementRequired) {
+    movementPoints = SCORING.movementMax;
+  } else if (decision.expectedCall === 'mine') {
+    movementPoints = Math.round(
+      SCORING.movementMax * clamp(1 - distance(player, ideal) / 2.5, 0, 1)
+    );
+  } else {
+    movementPoints = Math.round(
+      SCORING.movementMax * clamp(1 - Math.max(0, 2.2 - distance(player, landing)) / 2.2, 0, 1)
+    );
+  }
+
+  const reactionPoints = Math.round(SCORING.reactionMax * clamp(1 - reactionMs / 2800, 0, 1));
+  const penalty = crossedLane ? SCORING.crossingPenalty : 0;
+  return {
+    correct,
+    decisionPoints,
+    movementPoints,
+    reactionPoints,
+    penalty,
+    total: Math.max(0, decisionPoints + movementPoints + reactionPoints - penalty)
+  };
+}
