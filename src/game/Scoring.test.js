@@ -37,4 +37,16 @@ describe('scoreRound movement requirements', () => {
     });
     expect(close.movementPoints).toBeGreaterThan(far.movementPoints);
   });
+
+  it('uses an explicit movement score from circle assessment', () => {
+    const result = scoreRound({
+      call: 'mine',
+      decision: mineDecision,
+      player: { x: 4, z: 8 },
+      landing,
+      reactionMs: 800,
+      movementPointsOverride: 17
+    });
+    expect(result.movementPoints).toBe(17);
+  });
 });
